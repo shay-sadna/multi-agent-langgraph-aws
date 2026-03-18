@@ -1,0 +1,2 @@
+Q: Can I trade US stocks in ILS or do I need to convert to USD?
+A: You can hold both ILS and USD in your Leumi Trade portfolio. For US market trades, funds are automatically converted from ILS to USD at the current exchange rate if you don't have sufficient USD balance. You can also pre-convert currency manually under "Tools" > "Currency Exchange" to lock in a preferred rate.

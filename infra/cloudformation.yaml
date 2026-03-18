@@ -1,0 +1,410 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Multi-Agent Customer Support — LangGraph + Bedrock + Comprehend + SageMaker A2I.
+  Creates S3 buckets, IAM roles, ECR repo, Lambda (A2I feedback loop), and EventBridge rule.
+  All resources use RandomSuffix to avoid naming conflicts across parallel deployments.
+
+Parameters:
+  RandomSuffix:
+    Type: String
+    Description: >
+      Unique 6-character suffix for all resource names (e.g. "abc123").
+      Prevents naming conflicts when multiple students deploy simultaneously.
+    MinLength: 3
+    MaxLength: 10
+    AllowedPattern: "[a-z0-9]+"
+
+Resources:
+
+  # ---------------------------------------------------------------
+  # S3: Data Bucket — stores FAQ source files
+  # ---------------------------------------------------------------
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "data-bucket-${RandomSuffix}"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # ---------------------------------------------------------------
+  # S3: Feedback Bucket — stores SageMaker A2I human review outputs
+  # ---------------------------------------------------------------
+  FeedbackBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "feedback-bucket-${RandomSuffix}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # ---------------------------------------------------------------
+  # IAM Role: Bedrock Knowledge Base service role
+  # Bedrock assumes this to read S3 files and write to S3 Vectors
+  # ---------------------------------------------------------------
+  BedrockKBRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "bedrock-kb-role-${RandomSuffix}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: EmbeddingModelAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0"
+        - PolicyName: S3DataBucketAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt DataBucket.Arn
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${DataBucket.Arn}/*"
+        - PolicyName: S3VectorsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3vectors:PutVectors
+                  - s3vectors:GetVectors
+                  - s3vectors:QueryVectors
+                  - s3vectors:DeleteVectors
+                  - s3vectors:ListVectors
+                  - s3vectors:GetIndex
+                  - s3vectors:GetVectorBucket
+                Resource: "*"
+
+  # ---------------------------------------------------------------
+  # IAM Role: SageMaker A2I — writes review outputs to feedback bucket
+  # ---------------------------------------------------------------
+  SageMakerA2IRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "sagemaker-a2i-role-${RandomSuffix}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+      Policies:
+        - PolicyName: FeedbackBucketAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt FeedbackBucket.Arn
+                  - !Sub "${FeedbackBucket.Arn}/*"
+
+  # ---------------------------------------------------------------
+  # IAM Role: Lambda (A2I completion handler)
+  # ---------------------------------------------------------------
+  A2ILambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "a2i-lambda-role-${RandomSuffix}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+        - PolicyName: S3FeedbackRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${FeedbackBucket.Arn}/*"
+        - PolicyName: S3DataWrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "${DataBucket.Arn}/*"
+        - PolicyName: BedrockKBIngestion
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:StartIngestionJob
+                  - bedrock:GetIngestionJob
+                Resource: "*"
+
+  # ---------------------------------------------------------------
+  # IAM Role: App Runner — pull Docker image from ECR
+  # ---------------------------------------------------------------
+  AppRunnerECRRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "apprunner-ecr-role-${RandomSuffix}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECRPullAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:DescribeImages
+                Resource: !GetAtt ECRRepository.Arn
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+
+  # ---------------------------------------------------------------
+  # IAM Role: App Runner instance — runtime AWS permissions
+  # ---------------------------------------------------------------
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "apprunner-instance-role-${RandomSuffix}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:Retrieve
+                  - bedrock:RetrieveAndGenerate
+                  - bedrock:ApplyGuardrail
+                  - bedrock-agent-runtime:Retrieve
+                  - bedrock-agent-runtime:RetrieveAndGenerate
+                Resource: "*"
+        - PolicyName: ComprehendAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: comprehend:DetectSentiment
+                Resource: "*"
+        - PolicyName: A2IAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:StartHumanLoop
+                  - sagemaker-a2i-runtime:StartHumanLoop
+                  - sagemaker-a2i-runtime:DescribeHumanLoop
+                Resource: "*"
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DataBucket.Arn
+                  - !Sub "${DataBucket.Arn}/*"
+                  - !GetAtt FeedbackBucket.Arn
+                  - !Sub "${FeedbackBucket.Arn}/*"
+
+  # ---------------------------------------------------------------
+  # ECR Repository — Docker image for the FastAPI app
+  # ---------------------------------------------------------------
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "multi-agent-app-${RandomSuffix}"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  # ---------------------------------------------------------------
+  # Lambda: A2I Completion Handler
+  # Triggered by EventBridge when a human review loop completes.
+  # Reads the reviewer's answer, writes a new FAQ to S3, kicks off KB re-ingestion.
+  # Note: KNOWLEDGE_BASE_ID and DATA_SOURCE_ID are set to PLACEHOLDER here;
+  #       deploy.sh / manual_setup.sh updates them after KB creation.
+  # ---------------------------------------------------------------
+  A2ICompletionLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "a2i-completion-handler-${RandomSuffix}"
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt A2ILambdaRole.Arn
+      Environment:
+        Variables:
+          DATA_BUCKET: !Ref DataBucket
+          KNOWLEDGE_BASE_ID: "PLACEHOLDER"
+          DATA_SOURCE_ID: "PLACEHOLDER"
+      Code:
+        ZipFile: |
+          import json, os, boto3
+
+          s3 = boto3.client("s3")
+          bedrock_agent = boto3.client("bedrock-agent")
+          DATA_BUCKET = os.environ["DATA_BUCKET"]
+          KNOWLEDGE_BASE_ID = os.environ["KNOWLEDGE_BASE_ID"]
+          DATA_SOURCE_ID = os.environ["DATA_SOURCE_ID"]
+
+          def handler(event, context):
+              detail = event["detail"]
+              loop_name = detail["humanLoopName"]
+              output_s3_uri = detail["humanLoopOutput"]["outputS3Uri"]
+              print(f"Processing completed loop: {loop_name}")
+
+              parts = output_s3_uri.replace("s3://", "").split("/", 1)
+              bucket, key = parts[0], parts[1]
+              resp = s3.get_object(Bucket=bucket, Key=key)
+              data = json.loads(resp["Body"].read())
+
+              question = data["inputContent"]["question"]
+              answer = data["humanAnswers"][0]["answerContent"]["human_response"]
+
+              faq_key = f"faq_human_{loop_name}.txt"
+              s3.put_object(
+                  Bucket=DATA_BUCKET, Key=faq_key,
+                  Body=f"Q: {question}\nA: {answer}".encode()
+              )
+              print(f"FAQ written to s3://{DATA_BUCKET}/{faq_key}")
+
+              resp = bedrock_agent.start_ingestion_job(
+                  knowledgeBaseId=KNOWLEDGE_BASE_ID,
+                  dataSourceId=DATA_SOURCE_ID
+              )
+              job_id = resp["ingestionJob"]["ingestionJobId"]
+              print(f"KB ingestion started: {job_id}")
+              return {"statusCode": 200, "loopName": loop_name, "ingestionJobId": job_id}
+
+  # ---------------------------------------------------------------
+  # EventBridge Rule — fires when SageMaker A2I loop completes
+  # ---------------------------------------------------------------
+  A2IEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "a2i-completion-rule-${RandomSuffix}"
+      Description: Triggers A2I completion Lambda when a human review loop finishes
+      EventPattern:
+        source:
+          - aws.sagemaker
+        detail-type:
+          - "SageMaker A2I HumanLoop Status Change"
+        detail:
+          humanLoopStatus:
+            - "Completed"
+      Targets:
+        - Arn: !GetAtt A2ICompletionLambda.Arn
+          Id: A2ICompletionLambdaTarget
+
+  A2IEventRuleLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref A2ICompletionLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt A2IEventRule.Arn
+
+# ---------------------------------------------------------------
+# Outputs — used by deploy.sh and manual_setup.sh
+# ---------------------------------------------------------------
+Outputs:
+  DataBucketName:
+    Value: !Ref DataBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-DataBucket"
+
+  FeedbackBucketName:
+    Value: !Ref FeedbackBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-FeedbackBucket"
+
+  BedrockKBRoleArn:
+    Description: IAM Role ARN for Amazon Bedrock Knowledge Base
+    Value: !GetAtt BedrockKBRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-BedrockKBRoleArn"
+
+  SageMakerRoleArn:
+    Description: IAM Role ARN for SageMaker A2I (use when creating the human review workflow)
+    Value: !GetAtt SageMakerA2IRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-SageMakerRoleArn"
+
+  A2ILambdaFunctionName:
+    Description: Lambda function name (A2I completion handler)
+    Value: !Ref A2ICompletionLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-A2ILambdaFunctionName"
+
+  ECRRepositoryUri:
+    Description: ECR repository URI (push Docker image here)
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRRepositoryUri"
+
+  AppRunnerECRRoleArn:
+    Description: IAM Role ARN for App Runner to pull from ECR
+    Value: !GetAtt AppRunnerECRRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AppRunnerECRRoleArn"
+
+  AppRunnerInstanceRoleArn:
+    Description: IAM Role ARN for App Runner instance (runtime AWS permissions)
+    Value: !GetAtt AppRunnerInstanceRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AppRunnerInstanceRoleArn"

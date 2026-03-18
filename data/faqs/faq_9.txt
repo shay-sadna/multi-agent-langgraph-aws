@@ -1,0 +1,2 @@
+Q: What types of orders can I place on Leumi Trade?
+A: Leumi Trade supports market orders (executed immediately at current price), limit orders (executed only at your specified price or better), stop-loss orders (triggered when price drops to a set level), and GTC (Good Till Cancelled) orders that remain active for up to 90 days.

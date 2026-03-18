@@ -1,0 +1,9 @@
+.venv/
+data/
+docs/
+media/
+generated-diagrams/
+.git/
+*.bak
+__pycache__/
+.claude/

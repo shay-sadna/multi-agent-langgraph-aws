@@ -1,0 +1,2 @@
+Q: How secure is my Leumi Trade account?
+A: Leumi Trade uses bank-grade security including two-factor authentication (2FA), biometric login (fingerprint/Face ID), and 256-bit SSL encryption. All funds are held in your Bank Leumi account and protected under the Bank of Israel deposit regulations. Suspicious activity triggers automatic account lock and SMS alerts.

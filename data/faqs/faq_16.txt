@@ -1,0 +1,2 @@
+Q: How do I set price alerts on Leumi Trade?
+A: Open any security's page, tap the bell icon, and set your target price (above or below current price). You can set up to 50 active alerts. Notifications are sent via push notification, SMS, or email based on your preferences under "Settings" > "Notifications".

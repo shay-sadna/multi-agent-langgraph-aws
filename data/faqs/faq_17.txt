@@ -1,0 +1,2 @@
+Q: Can I manage multiple portfolios on Leumi Trade?
+A: Yes, you can create multiple portfolios within a single Leumi Trade account. Go to "My Portfolios" > "Create New Portfolio". Each portfolio has its own cash balance and holdings, which is useful for separating long-term investments from short-term trading strategies.

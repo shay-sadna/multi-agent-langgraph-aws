@@ -1,0 +1,24 @@
+<script src="https://assets.crowd.aws/crowd-html-elements.js"></script>
+<crowd-form>
+   <!-- Display the customer question -->
+   <div>
+      <h3>Customer Question:</h3>
+      <p>{{ task.input.question }}</p>
+   </div>
+
+   <!-- Optionally display FAQ results (if any) -->
+   <div>
+      <h4>Suggested FAQ (Low Confidence):</h4>
+      <p>{{ task.input.faq_suggestion }}</p>
+   </div>
+
+   <!-- Human reviewer response -->
+   <div>
+      <crowd-text-area
+         name="human_response"
+         label="Write a professional reply to the customer:"
+         placeholder="Type your support response here."
+         required
+      ></crowd-text-area>
+   </div>
+</crowd-form>

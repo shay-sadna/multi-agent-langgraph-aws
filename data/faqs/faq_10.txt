@@ -1,0 +1,2 @@
+Q: How do I withdraw money from my Leumi Trade portfolio?
+A: Go to "My Portfolio" > "Withdraw Funds", enter the amount you wish to withdraw, and select your destination Bank Leumi account. Withdrawals from settled funds are processed within one business day. Note that unsettled funds from recent sales (T+2 for stocks) cannot be withdrawn until settlement.

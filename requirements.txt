@@ -1,0 +1,7 @@
+boto3
+langgraph
+langchain>=0.3
+langchain-aws
+langchain-core
+fastapi
+uvicorn[standard]

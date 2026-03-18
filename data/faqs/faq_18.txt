@@ -1,0 +1,2 @@
+Q: Does Leumi Trade support IPO investments?
+A: Yes, when IPOs are available on the TASE, eligible Leumi Trade customers can submit orders during the offering period. IPO notifications appear under "Market" > "IPO Calendar". Participation may require a minimum portfolio balance depending on the specific offering.

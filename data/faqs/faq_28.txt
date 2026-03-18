@@ -1,0 +1,2 @@
+Q: What should I do if a trade execution fails or an order is stuck?
+A: If an order appears stuck, first check the order status under "My Orders". Limit orders may not execute if the market price hasn't reached your target. If a technical issue occurred, contact Leumi Trade support at *5765 immediately. You can also cancel pending orders and resubmit them. All order issues are logged and can be reviewed with support.

@@ -1,0 +1,2 @@
+Q: Can I set up automatic recurring investments on Leumi Trade?
+A: Yes, Leumi Trade offers an automatic investment plan. Go to "Tools" > "Recurring Investments", choose the security or fund, set the amount and frequency (weekly, bi-weekly, or monthly), and the system will execute the purchase automatically on your chosen schedule.
