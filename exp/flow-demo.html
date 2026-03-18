@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Multi-Agent Architecture — Interactive Flow</title>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #30363d;
+    --text:      #e6edf3;
+    --dim:       #8b949e;
+    --gold:      #ffd700;
+    --apprunner: #e07b39;
+    --bedrock:   #2ea043;
+    --langgraph: #388bfd;
+    --comprehend:#1f9ad6;
+    --router:    #d29922;
+    --guardrail: #8957e5;
+    --a2i:       #f85149;
+    --lambda:    #e07b39;
+    --eventbridge:#ec6547;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 20px;
+    gap: 16px;
+  }
+
+  h1 { font-size: 1.5rem; color: var(--gold); text-align: center; }
+  .subtitle { font-size: 0.85rem; color: var(--dim); text-align: center; margin-top: 4px; }
+
+  .canvas-wrap {
+    width: 100%;
+    max-width: 1200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    overflow: hidden;
+  }
+
+  svg#arch { width: 100%; height: auto; display: block; }
+
+  .nd {
+    fill: rgba(255,255,255,0.04);
+    stroke: #3d444d;
+    stroke-width: 1.5;
+    transition: fill 0.3s, stroke 0.3s, stroke-width 0.3s;
+  }
+  .nd-label {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    fill: var(--text);
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+    font-weight: 500;
+  }
+  .nd-badge {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 10px;
+    fill: var(--dim);
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  .ar {
+    fill: none;
+    stroke: #3d444d;
+    stroke-width: 1.5;
+    opacity: 0.25;
+    transition: stroke 0.3s, stroke-width 0.3s, opacity 0.3s;
+  }
+  .ar-label {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 10px;
+    fill: var(--dim);
+    text-anchor: middle;
+    opacity: 0.25;
+    transition: fill 0.3s, opacity 0.3s;
+  }
+  .ar.active   { opacity: 1; stroke-width: 2.5; }
+  .ar-label.active { opacity: 1; }
+  .cluster {
+    fill: rgba(255,255,255,0.022);
+    stroke: #3d444d;
+    stroke-width: 1;
+    stroke-dasharray: 5 3;
+    transition: stroke 0.3s;
+  }
+  .cluster-label {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 10px;
+    fill: var(--dim);
+    pointer-events: none;
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 1200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 28px;
+    min-height: 120px;
+  }
+  .step-tag {
+    display: inline-block;
+    background: var(--gold);
+    color: #000;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 20px;
+    margin-bottom: 10px;
+  }
+  .step-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; }
+  .step-desc  { font-size: 0.88rem; color: var(--dim); line-height: 1.65; }
+  .step-code  {
+    display: block;
+    background: #1c2128;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    color: #79c0ff;
+    padding: 8px 14px;
+    margin-top: 10px;
+    white-space: pre;
+  }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 8px;
+  }
+  .nav button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.9rem;
+    padding: 9px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .nav button:hover:not(:disabled) { background: #21262d; border-color: var(--gold); }
+  .nav button:disabled { opacity: 0.35; cursor: default; }
+  .nav .progress { font-size: 0.82rem; color: var(--dim); min-width: 60px; text-align: center; }
+  .dots { display: flex; gap: 7px; }
+  .dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: background 0.3s;
+    cursor: pointer;
+  }
+  .dot.active  { background: var(--gold); }
+  .dot.visited { background: #3d5a80; }
+</style>
+</head>
+<body>
+
+<h1>Multi-Agent Customer Support — Interactive Flow</h1>
+<p class="subtitle">Click <strong>Next</strong> (or use ← →) to walk through each step of the architecture</p>
+
+<!-- ════════════════════ SVG DIAGRAM ════════════════════ -->
+<!--
+  Layout (viewBox 0 0 1240 560):
+  Row 1 (y=80-140):  Human Review cluster  →  SageMaker A2I, Human Review Workflow
+  Row 2 (y=200-280): Main flow left→right  →  User, App Runner, Domain Classifier,
+                                               KB Agent (above), Sentiment Agent (below),
+                                               Join, Confidence Router, LLM Generator, Guardrail
+  Row 3 (y=360-420): Feedback loop         →  Data bucket, Lambda, EventBridge, Feedback bucket
+-->
+<div class="canvas-wrap">
+<svg id="arch" viewBox="0 0 1240 540" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-dim"         markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#3d444d"/></marker>
+    <marker id="arr-apprunner"   markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#e07b39"/></marker>
+    <marker id="arr-bedrock"     markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#2ea043"/></marker>
+    <marker id="arr-langgraph"   markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#388bfd"/></marker>
+    <marker id="arr-comprehend"  markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#1f9ad6"/></marker>
+    <marker id="arr-router"      markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#d29922"/></marker>
+    <marker id="arr-guardrail"   markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#8957e5"/></marker>
+    <marker id="arr-a2i"         markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#f85149"/></marker>
+    <marker id="arr-lambda"      markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#e07b39"/></marker>
+    <marker id="arr-eventbridge" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#ec6547"/></marker>
+    <marker id="arr-feedback"    markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#ffd700"/></marker>
+  </defs>
+
+  <!-- AWS Cloud border -->
+  <rect x="2" y="2" width="1236" height="536"
+        fill="rgba(31,111,235,0.03)" stroke="#1f6feb"
+        stroke-width="1" stroke-dasharray="6 3" rx="14"/>
+  <text x="14" y="20" class="cluster-label" fill="#1f6feb">AWS Cloud — eu-west-1</text>
+
+  <!-- LangGraph Graph cluster (contains KB Agent + Sentiment Agent) -->
+  <rect id="cl-lg" x="455" y="145" width="250" height="235" class="cluster" rx="10"/>
+  <text x="467" y="162" class="cluster-label">LangGraph Graph</text>
+
+  <!-- Human Review cluster -->
+  <rect id="cl-human" x="870" y="58" width="340" height="110" class="cluster" rx="10"/>
+  <text x="882" y="74" class="cluster-label">Human Review</text>
+
+  <!-- Feedback Loop cluster -->
+  <rect id="cl-fb" x="620" y="350" width="590" height="110" class="cluster" rx="10"/>
+  <text x="632" y="366" class="cluster-label">Feedback Loop</text>
+
+  <!-- ═══════════ NODES ═══════════ -->
+
+  <!-- User  x=15 cx=55 -->
+  <rect id="n-user" class="nd" x="15"  y="222" width="80"  height="50" rx="8"/>
+  <text class="nd-label" x="55"  y="246">👤 User</text>
+
+  <!-- App Runner  cx=165 -->
+  <rect id="n-app"  class="nd" x="110" y="212" width="120" height="66" rx="8"/>
+  <text class="nd-label" x="170" y="238">App Runner</text>
+  <text class="nd-badge"  x="170" y="257">FastAPI / Docker / ECR</text>
+
+  <!-- Domain Classifier  cx=315 -->
+  <rect id="n-dom"  class="nd" x="250" y="212" width="130" height="66" rx="8"/>
+  <text class="nd-label" x="315" y="237">Domain</text>
+  <text class="nd-label" x="315" y="253">Classifier</text>
+  <text class="nd-badge"  x="315" y="295">Nova Pro YES/NO</text>
+
+  <!-- KB Agent  cx=500  top of LangGraph cluster -->
+  <rect id="n-kb"   class="nd" x="465" y="168" width="140" height="58" rx="8"/>
+  <text class="nd-label" x="535" y="191">KB Agent</text>
+  <text class="nd-badge"  x="535" y="216">Bedrock KB · S3 Vectors</text>
+
+  <!-- Sentiment Agent  cx=500  bottom of LangGraph cluster -->
+  <rect id="n-sent" class="nd" x="465" y="298" width="140" height="58" rx="8"/>
+  <text class="nd-label" x="535" y="321">Sentiment Agent</text>
+  <text class="nd-badge"  x="535" y="345">Amazon Comprehend</text>
+
+  <!-- Join  cx=680 -->
+  <rect id="n-join" class="nd" x="640" y="222" width="80"  height="50" rx="8"/>
+  <text class="nd-label" x="680" y="247">Join</text>
+
+  <!-- Confidence Router  cx=810 -->
+  <rect id="n-router" class="nd" x="745" y="212" width="140" height="66" rx="8"/>
+  <text class="nd-label" x="815" y="237">Confidence</text>
+  <text class="nd-label" x="815" y="253">Router</text>
+  <text class="nd-badge"  x="815" y="295">threshold = 0.75</text>
+
+  <!-- LLM Generator  cx=970 -->
+  <rect id="n-llm"  class="nd" x="905" y="212" width="140" height="66" rx="8"/>
+  <text class="nd-label" x="975" y="237">LLM Generator</text>
+  <text class="nd-badge"  x="975" y="260">Nova Pro</text>
+
+  <!-- Bedrock Guardrail  cx=1130 -->
+  <rect id="n-grd"  class="nd" x="1065" y="212" width="150" height="66" rx="8"/>
+  <text class="nd-label" x="1140" y="237">Bedrock</text>
+  <text class="nd-label" x="1140" y="253">Guardrail</text>
+  <text class="nd-badge"  x="1140" y="295">Content + Grounding 0.7</text>
+
+  <!-- SageMaker A2I  cx=930 -->
+  <rect id="n-a2i"  class="nd" x="880"  y="78"  width="140" height="58" rx="8"/>
+  <text class="nd-label" x="950"  y="101">SageMaker A2I</text>
+  <text class="nd-badge"  x="950"  y="125">StartHumanLoop()</text>
+
+  <!-- Human Review Workflow  cx=1090 -->
+  <rect id="n-human" class="nd" x="1050" y="78"  width="150" height="58" rx="8"/>
+  <text class="nd-label" x="1125" y="101">Human Review</text>
+  <text class="nd-label" x="1125" y="117">Workflow</text>
+
+  <!-- Feedback bucket  cx=1140 -->
+  <rect id="n-fb"   class="nd" x="1070" y="375" width="130" height="58" rx="8"/>
+  <text class="nd-label" x="1135" y="398">Feedback</text>
+  <text class="nd-label" x="1135" y="414">bucket (S3)</text>
+
+  <!-- EventBridge  cx=940 -->
+  <rect id="n-eb"   class="nd" x="870"  y="375" width="130" height="58" rx="8"/>
+  <text class="nd-label" x="935"  y="398">EventBridge</text>
+  <text class="nd-label" x="935"  y="414">Rule</text>
+
+  <!-- Lambda  cx=785 -->
+  <rect id="n-lam"  class="nd" x="720"  y="375" width="130" height="58" rx="8"/>
+  <text class="nd-label" x="785"  y="398">Lambda</text>
+  <text class="nd-badge"  x="785"  y="418">a2i-completion-handler</text>
+
+  <!-- Data bucket  cx=655 -->
+  <rect id="n-data" class="nd" x="590"  y="375" width="120" height="58" rx="8"/>
+  <text class="nd-label" x="650"  y="398">Data bucket</text>
+  <text class="nd-label" x="650"  y="414">(S3)</text>
+
+  <!-- Out of scope (hidden by default) -->
+  <rect id="n-oos" class="nd" x="250" y="320" width="130" height="45" rx="8" opacity="0"/>
+  <text id="lbl-oos" class="nd-label" x="315" y="342" opacity="0" style="font-size:12px">Out of scope ✗</text>
+
+  <!-- ═══════════ ARROWS ═══════════ -->
+
+  <!-- User → App Runner -->
+  <line id="a-ua" class="ar" x1="95"  y1="247" x2="108" y2="247" marker-end="url(#arr-dim)"/>
+  <text id="al-ua" class="ar-label" x="102" y="240">POST /ask</text>
+
+  <!-- App Runner → Domain Classifier -->
+  <line id="a-ad" class="ar" x1="230" y1="247" x2="248" y2="247" marker-end="url(#arr-dim)"/>
+  <text id="al-ad" class="ar-label" x="239" y="240">classify</text>
+
+  <!-- Domain Classifier → KB Agent (up-right diagonal) -->
+  <line id="a-dk" class="ar" x1="380" y1="228" x2="463" y2="200" marker-end="url(#arr-dim)"/>
+
+  <!-- Domain Classifier → Sentiment Agent (down-right diagonal) -->
+  <line id="a-ds" class="ar" x1="380" y1="266" x2="463" y2="316" marker-end="url(#arr-dim)"/>
+
+  <!-- Domain Classifier → Out of scope (straight down) -->
+  <line id="a-dos" class="ar" x1="315" y1="278" x2="315" y2="318" marker-end="url(#arr-dim)"/>
+  <text id="al-dos" class="ar-label" x="280" y="302">no → out of scope</text>
+
+  <!-- KB Agent → Join -->
+  <line id="a-kj" class="ar" x1="605" y1="197" x2="648" y2="238" marker-end="url(#arr-dim)"/>
+  <text id="al-kj" class="ar-label" x="615" y="212">answer+score</text>
+
+  <!-- Sentiment Agent → Join -->
+  <line id="a-sj" class="ar" x1="605" y1="320" x2="648" y2="262" marker-end="url(#arr-dim)"/>
+  <text id="al-sj" class="ar-label" x="614" y="302">sentiment</text>
+
+  <!-- Join → Router -->
+  <line id="a-jr" class="ar" x1="720" y1="247" x2="743" y2="247" marker-end="url(#arr-dim)"/>
+
+  <!-- Router → LLM (≥0.75) -->
+  <line id="a-rl" class="ar" x1="885" y1="247" x2="903" y2="247" marker-end="url(#arr-dim)"/>
+  <text id="al-rl" class="ar-label" x="894" y="239">≥ 0.75</text>
+
+  <!-- Router → A2I (<0.75, diagonal up-right) -->
+  <line id="a-ra" class="ar" x1="830" y1="212" x2="920" y2="136" marker-end="url(#arr-dim)"/>
+  <text id="al-ra" class="ar-label" x="895" y="170">&lt; 0.75</text>
+
+  <!-- LLM → Guardrail -->
+  <line id="a-lg" class="ar" x1="1045" y1="247" x2="1063" y2="247" marker-end="url(#arr-dim)"/>
+  <text id="al-lg" class="ar-label" x="1054" y="239">generate</text>
+
+  <!-- A2I → Human Review -->
+  <line id="a-ah" class="ar" x1="1020" y1="107" x2="1048" y2="107" marker-end="url(#arr-dim)"/>
+  <text id="al-ah" class="ar-label" x="1034" y="100">review task</text>
+
+  <!-- Human Review → Feedback bucket (down) -->
+  <line id="a-hf" class="ar" x1="1125" y1="136" x2="1135" y2="373" marker-end="url(#arr-dim)"/>
+  <text id="al-hf" class="ar-label" x="1150" y="260">save output</text>
+
+  <!-- Feedback bucket → EventBridge (left) -->
+  <line id="a-fe" class="ar" x1="1070" y1="404" x2="1002" y2="404" marker-end="url(#arr-dim)"/>
+  <text id="al-fe" class="ar-label" x="1036" y="397">A2I Completed</text>
+
+  <!-- EventBridge → Lambda (left) -->
+  <line id="a-el" class="ar" x1="870"  y1="404" x2="852"  y2="404" marker-end="url(#arr-dim)"/>
+  <text id="al-el" class="ar-label" x="861" y="397">invoke</text>
+
+  <!-- Lambda → Data bucket (left) -->
+  <line id="a-ld" class="ar" x1="720"  y1="404" x2="712"  y2="404" marker-end="url(#arr-dim)"/>
+  <text id="al-ld" class="ar-label" x="716" y="397">write FAQ</text>
+
+  <!-- Data bucket → KB Agent (feedback, dashed curve up) -->
+  <path id="a-dkb" class="ar" stroke-dasharray="6 3"
+        d="M 650 375 Q 650 145 535 160" marker-end="url(#arr-dim)"/>
+  <text id="al-dkb" class="ar-label" x="570" y="245">StartIngestionJob()</text>
+
+  <!-- Guardrail → User (response, big curve) -->
+  <path id="a-gu" class="ar" stroke-dasharray="4 3"
+        d="M 1140 278 Q 1140 510 55 510 Q 55 274 55 274"
+        marker-end="url(#arr-dim)"/>
+  <text id="al-gu" class="ar-label" x="590" y="522">Response to user</text>
+
+</svg>
+</div>
+
+<!-- ════════════════════ EXPLANATION PANEL ════════════════════ -->
+<div class="panel" id="panel">
+  <div class="step-tag"  id="step-tag">START</div>
+  <div class="step-title" id="step-title">Multi-Agent Customer Support Architecture</div>
+  <div class="step-desc"  id="step-desc">
+    Click <strong>Next</strong> (or press → / Space) to walk through each step of the pipeline —
+    from user query to answer, or human escalation and the feedback loop.
+  </div>
+</div>
+
+<!-- ════════════════════ NAVIGATION ════════════════════ -->
+<div class="nav">
+  <button id="btn-prev" onclick="go(-1)" disabled>← Back</button>
+  <div class="dots" id="dots"></div>
+  <div class="progress" id="progress">0 / 11</div>
+  <button id="btn-next" onclick="go(1)">Next →</button>
+</div>
+
+<script>
+const COLORS = {
+  apprunner:   "#e07b39",
+  bedrock:     "#2ea043",
+  langgraph:   "#388bfd",
+  comprehend:  "#1f9ad6",
+  router:      "#d29922",
+  guardrail:   "#8957e5",
+  a2i:         "#f85149",
+  lambda:      "#e07b39",
+  eventbridge: "#ec6547",
+  feedback:    "#ffd700"
+};
+
+const NODE_COLOR = {
+  "n-user":"#e07b39","n-app":"#e07b39","n-dom":"#2ea043",
+  "n-kb":"#388bfd","n-sent":"#1f9ad6","n-join":"#d29922",
+  "n-router":"#d29922","n-llm":"#388bfd","n-grd":"#8957e5",
+  "n-a2i":"#f85149","n-human":"#f85149","n-fb":"#2ea043",
+  "n-eb":"#ec6547","n-lam":"#e07b39","n-data":"#2ea043",
+  "n-oos":"#f85149"
+};
+
+const STEPS = [
+  {
+    tag:"START", title:"Multi-Agent Customer Support Architecture",
+    desc:"This system answers trading and finance questions (Leumi Trade) using a LangGraph multi-agent pipeline on AWS. Click <strong>Next</strong> to walk through the full flow step by step.",
+    code:null, hi:[], arrows:[], showOos:false
+  },
+  {
+    tag:"STEP 1", title:"User sends a question via POST /ask",
+    desc:"The user submits a question to the App Runner endpoint. App Runner runs the FastAPI app inside a Docker container pulled from Amazon ECR. It listens on port 8080.",
+    code:'curl -X POST https://&lt;app-runner-url&gt;/ask \\\n  -d \'{"question":"What are the trading hours?"}\'',
+    hi:["n-user","n-app"], arrows:[["a-ua","al-ua","apprunner"]]
+  },
+  {
+    tag:"STEP 2", title:"Domain Classifier: is this a finance/trading question?",
+    desc:"Before entering LangGraph, <code>api.py</code> calls Bedrock Nova Pro with a YES/NO prompt. If the question is not about finance, trading, or investments → return 'Out of scope' immediately. No LangGraph needed.",
+    code:"response = bedrock_runtime.converse(\n  modelId='eu.amazon.nova-pro-v1:0',\n  messages=[{'role':'user','content':'Is this finance-related? Reply YES or NO.'}]\n)",
+    hi:["n-dom"], arrows:[["a-ad","al-ad","bedrock"]]
+  },
+  {
+    tag:"STEP 2b", title:"Off-topic question → blocked immediately",
+    desc:"<em>\"What is the weather in Tel Aviv?\"</em> — domain classifier returns NO. The response is returned instantly without touching LangGraph at all. confidence=0, escalated=false.",
+    code:'{"answer":"I can only answer questions about Leumi Trade...",\n "confidence":0, "escalated":false}',
+    hi:["n-oos"], arrows:[["a-dos","al-dos","a2i"]], showOos:true
+  },
+  {
+    tag:"STEP 3", title:"LangGraph fires two agents in parallel",
+    desc:"For in-domain questions, the query enters the LangGraph graph. The <strong>KB Agent</strong> and <strong>Sentiment Agent</strong> are fired simultaneously using parallel edges. LangGraph waits for both before continuing.",
+    code:"graph.add_edge('supervisor', 'kb_agent')\ngraph.add_edge('supervisor', 'sentiment_agent')\n# Both run in parallel — LangGraph manages the state",
+    hi:["n-kb","n-sent"], arrows:[["a-dk",null,"langgraph"],["a-ds",null,"comprehend"]]
+  },
+  {
+    tag:"STEP 4", title:"KB Agent: semantic search in Bedrock Knowledge Base",
+    desc:"The KB Agent calls <code>bedrock_agent_runtime.retrieve()</code>. Titan Embed v2 converts the question to a 1024-dim vector and searches S3 Vectors (cosine similarity). Returns the best matching FAQ chunks + a <strong>confidence score</strong>.",
+    code:"result = bedrock_agent_runtime.retrieve(\n  knowledgeBaseId=KB_ID,\n  retrievalQuery={'text': question},\n  retrievalConfiguration={'vectorSearchConfiguration':{'numberOfResults':5}}\n)\nconfidence = result['retrievalResults'][0]['score']  # e.g. 0.97",
+    hi:["n-kb"], arrows:[["a-dk",null,"langgraph"],["a-kj","al-kj","langgraph"]]
+  },
+  {
+    tag:"STEP 5", title:"Sentiment Agent: Amazon Comprehend",
+    desc:"The Sentiment Agent calls <code>comprehend.detect_sentiment()</code> to classify the query tone: POSITIVE, NEGATIVE, NEUTRAL, or MIXED. This result is stored in the shared LangGraph state and passed to the LLM Generator to adjust response tone.",
+    code:"result = comprehend.detect_sentiment(Text=question, LanguageCode='en')\n# Returns: {'Sentiment': 'NEUTRAL', 'SentimentScore': {...}}",
+    hi:["n-sent"], arrows:[["a-ds",null,"comprehend"],["a-sj","al-sj","comprehend"]]
+  },
+  {
+    tag:"STEP 6", title:"Confidence Router: 0.75 threshold decision",
+    desc:"The <strong>Join node</strong> waits for both agents, then merges their results into shared state. The <strong>Confidence Router</strong> checks the KB score:<br><br>• <strong>score ≥ 0.75</strong> → LLM Generator (answer automatically)<br>• <strong>score &lt; 0.75</strong> → SageMaker A2I (escalate to human)",
+    code:"def route(state):\n    if state['confidence'] >= 0.75:\n        return 'llm_generator'\n    return 'human_escalation'",
+    hi:["n-join","n-router"], arrows:[["a-kj","al-kj","langgraph"],["a-sj","al-sj","comprehend"],["a-jr",null,"router"]]
+  },
+  {
+    tag:"STEP 7a", title:"High confidence → LLM Generator + Bedrock Guardrail",
+    desc:"Score ≥ 0.75: Nova Pro generates a polished response using the KB answer, original question, and sentiment. The response then passes through <strong>Bedrock Guardrail v4</strong>: content filters (all HIGH) + contextual grounding (0.7 threshold blocks hallucinations not grounded in the KB).",
+    code:"response = bedrock_runtime.invoke_model(\n  modelId='eu.amazon.nova-pro-v1:0',\n  guardrailIdentifier=GUARDRAIL_ID,\n  guardrailVersion='4',\n  body=json.dumps({'prompt': prompt})\n)",
+    hi:["n-llm","n-grd"], arrows:[["a-rl","al-rl","langgraph"],["a-lg","al-lg","guardrail"],["a-gu","al-gu","bedrock"]]
+  },
+  {
+    tag:"STEP 7b", title:"Low confidence → SageMaker A2I (human escalation)",
+    desc:"Score &lt; 0.75: the question can't be answered reliably from the KB. <code>sagemaker_a2i_runtime.start_human_loop()</code> creates a task in the human review portal. The user gets an immediate 'escalated' response. Example: <em>\"How do I transfer a Leumi Trade account to an heir?\"</em> — score 0.71.",
+    code:'result = sagemaker_a2i.start_human_loop(\n  HumanLoopName=f"loop-{uuid4()}",\n  FlowDefinitionArn=FLOW_ARN,\n  HumanLoopInput={"InputContent": json.dumps({"question": question})}\n)\n# Returns: {"answer":"Escalated to human review","confidence":0.71,"escalated":true}',
+    hi:["n-a2i","n-human"], arrows:[["a-ra","al-ra","a2i"],["a-ah","al-ah","a2i"]]
+  },
+  {
+    tag:"STEP 8", title:"Feedback loop: EventBridge → Lambda → KB re-ingestion",
+    desc:"After human reviewer answers:<br>1. Answer saved to <strong>Feedback bucket (S3)</strong><br>2. <strong>EventBridge rule</strong> fires on 'A2I HumanLoop Completed' event<br>3. <strong>Lambda</strong> reads the answer, writes a new FAQ to Data bucket<br>4. Lambda calls <code>start_ingestion_job()</code> — new FAQ indexed into the KB<br><br>Next time the same question is asked → KB returns score ≥ 0.75 → answered automatically!",
+    code:"# Lambda handler\nfaq_key = f'faq_human_{loop_name}.txt'\ns3.put_object(Bucket=DATA_BUCKET, Key=faq_key, Body=f'Q: {question}\\nA: {answer}')\nbedrock_agent.start_ingestion_job(knowledgeBaseId=KB_ID, dataSourceId=DS_ID)",
+    hi:["n-fb","n-eb","n-lam","n-data"], arrows:[["a-hf","al-hf","bedrock"],["a-fe","al-fe","eventbridge"],["a-el","al-el","lambda"],["a-ld","al-ld","lambda"],["a-dkb","al-dkb","langgraph"]]
+  },
+  {
+    tag:"COMPLETE ✅", title:"Knowledge Base updated — next query answered automatically",
+    desc:"The new FAQ is now indexed in the KB. The next time anyone asks the same (or similar) question, the KB Agent returns score ≥ 0.75 → LLM Generator answers it — <strong>no human needed</strong>.<br><br>The system gets smarter with every escalation. This is the feedback loop.",
+    code:null,
+    hi:["n-user","n-app","n-dom","n-kb","n-sent","n-join","n-router","n-llm","n-grd"],
+    arrows:[["a-ua","al-ua","apprunner"],["a-ad","al-ad","bedrock"],["a-dk",null,"langgraph"],["a-ds",null,"comprehend"],["a-kj","al-kj","langgraph"],["a-sj","al-sj","comprehend"],["a-jr",null,"router"],["a-rl","al-rl","langgraph"],["a-lg","al-lg","guardrail"],["a-gu","al-gu","bedrock"]]
+  }
+];
+
+let current = 0;
+
+function renderStep(idx) {
+  const s = STEPS[idx];
+
+  document.getElementById("step-tag").textContent   = `${s.tag}  —  ${idx} / ${STEPS.length-1}`;
+  document.getElementById("step-title").textContent = s.title;
+  document.getElementById("step-desc").innerHTML    = s.desc;
+
+  // code block
+  const existing = document.getElementById("code-block");
+  if (existing) existing.remove();
+  if (s.code) {
+    const el = document.createElement("pre");
+    el.id = "code-block";
+    el.className = "step-code";
+    el.innerHTML = s.code;
+    document.getElementById("panel").appendChild(el);
+  }
+
+  // reset nodes
+  document.querySelectorAll(".nd").forEach(el => {
+    el.style.fill        = "rgba(255,255,255,0.04)";
+    el.style.stroke      = "#3d444d";
+    el.style.strokeWidth = "1.5";
+    el.style.opacity     = "1";
+  });
+  document.getElementById("n-oos").style.opacity   = "0";
+  document.getElementById("lbl-oos").style.opacity = "0";
+
+  // reset arrows
+  document.querySelectorAll(".ar").forEach(el => {
+    el.style.stroke      = "#3d444d";
+    el.style.strokeWidth = "1.5";
+    el.style.opacity     = "0.2";
+    el.setAttribute("marker-end","url(#arr-dim)");
+  });
+  document.querySelectorAll(".ar-label").forEach(el => {
+    el.style.fill    = "#3d444d";
+    el.style.opacity = "0.2";
+  });
+
+  // highlight nodes
+  s.hi.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const c = NODE_COLOR[id] || "#ffd700";
+    el.style.fill        = `${c}28`;
+    el.style.stroke      = c;
+    el.style.strokeWidth = "3";
+  });
+
+  // out of scope
+  if (s.showOos) {
+    document.getElementById("n-oos").style.opacity   = "1";
+    document.getElementById("lbl-oos").style.opacity = "1";
+    document.getElementById("n-oos").style.stroke    = "#f85149";
+    document.getElementById("n-oos").style.fill      = "#f8514928";
+    document.getElementById("n-oos").style.strokeWidth = "3";
+  }
+
+  // activate arrows
+  s.arrows.forEach(([arId, lblId, colorKey]) => {
+    const arEl = document.getElementById(arId);
+    if (!arEl) return;
+    const c = COLORS[colorKey] || "#ffd700";
+    arEl.style.stroke      = c;
+    arEl.style.strokeWidth = "2.5";
+    arEl.style.opacity     = "1";
+    arEl.setAttribute("marker-end", `url(#arr-${colorKey})`);
+    if (lblId) {
+      const lbl = document.getElementById(lblId);
+      if (lbl) { lbl.style.fill = c; lbl.style.opacity = "1"; }
+    }
+  });
+
+  // nav
+  document.getElementById("btn-prev").disabled = idx === 0;
+  document.getElementById("btn-next").disabled = idx === STEPS.length - 1;
+  document.getElementById("progress").textContent = `${idx} / ${STEPS.length-1}`;
+
+  // dots
+  document.querySelectorAll(".dot").forEach((d,i) => {
+    d.classList.remove("active","visited");
+    if (i === idx)    d.classList.add("active");
+    else if (i < idx) d.classList.add("visited");
+  });
+}
+
+function go(dir) {
+  current = Math.max(0, Math.min(STEPS.length-1, current+dir));
+  renderStep(current);
+}
+
+// build dots
+const dotsEl = document.getElementById("dots");
+STEPS.forEach((_,i) => {
+  const d = document.createElement("div");
+  d.className = "dot";
+  d.onclick = () => { current = i; renderStep(i); };
+  dotsEl.appendChild(d);
+});
+
+renderStep(0);
+
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); go(1); }
+  if (e.key === "ArrowLeft")  { e.preventDefault(); go(-1); }
+});
+</script>
+</body>
+</html>
