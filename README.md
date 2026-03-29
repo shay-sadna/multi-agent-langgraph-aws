@@ -4,7 +4,7 @@ A production-ready multi-agent pipeline that answers customer support questions 
 
 Built as a hands-on workshop lab demonstrating real-world multi-agent architecture on AWS.
 
-![Architecture](docs/architecture.png)
+![Architecture](docs/generated-diagrams/architecture_eu_west_1.png)
 
 ## Architecture
 
@@ -46,7 +46,8 @@ my-lab/
 ├── docs/
 │   ├── DEPLOYMENT.md             # Detailed deployment guide
 │   ├── TESTING.md                # Testing & validation guide
-│   ├── architecture.png          # Architecture diagram
+│   └── generated-diagrams/       # Architecture diagrams
+│       └── architecture_eu_west_1.png
 │   ├── curriculum/               # Workshop lecture notes
 │   │   ├── lecture_english.md
 │   │   └── lecture_hebrew.md
