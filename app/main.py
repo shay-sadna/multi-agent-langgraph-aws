@@ -34,7 +34,7 @@ comprehend = _session.client("comprehend")
 a2i = _session.client("sagemaker-a2i-runtime")
 
 llm = ChatBedrock(
-    model_id="eu.amazon.nova-pro-v1:0",   # eu-west-1 requires cross-region inference profile
+    model_id="us.amazon.nova-pro-v1:0",   # us-east-1 cross-region inference profile
     region_name=REGION,
     credentials_profile_name=AWS_PROFILE or None,
 )
