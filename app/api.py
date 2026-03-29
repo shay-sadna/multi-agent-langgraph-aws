@@ -31,7 +31,7 @@ def _is_in_domain(question: str) -> bool:
     """Returns True if the question is about investing/Leumi Trade, False otherwise."""
     try:
         response = _bedrock.converse(
-            modelId="eu.amazon.nova-pro-v1:0",
+            modelId="us.amazon.nova-pro-v1:0",
             system=[{"text": _DOMAIN_SYSTEM}],
             messages=[{"role": "user", "content": [{"text": question}]}],
             inferenceConfig={"maxTokens": 5, "temperature": 0},
