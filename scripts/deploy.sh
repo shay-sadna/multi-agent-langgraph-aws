@@ -20,7 +20,7 @@
 #   bash scripts/deploy.sh --profile my-aws-profile
 #   bash scripts/deploy.sh --profile my-profile --region eu-west-1 --suffix abc123
 # ============================================================
-set -euo pipefail
+set -eo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 PROFILE=""
@@ -46,6 +46,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Auth setup ────────────────────────────────────────────────────────────────
+PROFILE_ARG=()
 if [[ -n "$ACCESS_KEY" && -n "$SECRET_KEY" ]]; then
   export AWS_ACCESS_KEY_ID="$ACCESS_KEY"
   export AWS_SECRET_ACCESS_KEY="$SECRET_KEY"
@@ -57,6 +58,10 @@ elif [[ -n "$PROFILE" ]]; then
   PROFILE_ARG=(--profile "$PROFILE")
   export BOTO3_PROFILE="$PROFILE"
   AUTH_DISPLAY="profile=$PROFILE"
+elif [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
+  PROFILE_ARG=()
+  export BOTO3_PROFILE=""
+  AUTH_DISPLAY="env vars (AWS_ACCESS_KEY_ID)"
 else
   echo "ERROR: provide --profile <name> or --access-key + --secret-key"
   exit 1

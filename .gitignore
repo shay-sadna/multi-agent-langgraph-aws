@@ -18,6 +18,9 @@ build/
 generated-diagrams/
 media/
 
+# Local archive
+old/
+
 # Local Claude configuration (may contain AWS account IDs)
 .claude/
 
