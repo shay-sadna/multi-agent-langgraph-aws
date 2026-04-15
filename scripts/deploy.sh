@@ -24,7 +24,7 @@ set -eo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 PROFILE=""
-REGION="eu-west-1"
+REGION="us-east-1"
 SUFFIX="$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase+string.digits,k=6)))")"
 ACCESS_KEY=""
 SECRET_KEY=""
@@ -333,7 +333,7 @@ gs = bedrock.list_guardrails().get("guardrails", [])
 existing = next((g for g in gs if g["name"] == "$GUARDRAIL_NAME"), None)
 if existing:
     print(f"  Guardrail already exists: {existing['id']}", file=sys.stderr)
-    versions = bedrock.list_guardrail_versions(guardrailIdentifier=existing["id"]).get("guardrails", [])
+    versions = bedrock.list_guardrails(guardrailIdentifier=existing["id"]).get("guardrails", [])
     published = [v for v in versions if v.get("version", "") != "DRAFT"]
     ver = published[-1]["version"] if published else "DRAFT"
     print(json.dumps({"id": existing["id"], "version": ver}))
@@ -389,6 +389,10 @@ echo "  Guardrail: $GUARDRAIL_ID  version: $GUARDRAIL_VERSION"
 # ── [9/10] Build Docker image and push to ECR ────────────────────────────────
 echo ""
 echo "=== [9/10] Building and pushing Docker image ==="
+if ! docker info > /dev/null 2>&1; then
+  echo "ERROR: Docker is not running. Start Docker Desktop and retry."
+  exit 1
+fi
 ECR_REGISTRY="${ECR_URI%%/*}"
 aws "${PROFILE_ARG[@]}" ecr get-login-password --region "$REGION" \
   | docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -453,17 +457,23 @@ if [[ -n "$EXISTING" && "$EXISTING" != "None" ]]; then
     --query "Service.ServiceUrl" --output text)
 else
   echo "  Creating new service..."
-  aws "${PROFILE_ARG[@]}" apprunner create-service \
+  SERVICE_ARN=$(aws "${PROFILE_ARG[@]}" apprunner create-service \
     --service-name "$SERVICE_NAME" \
     --source-configuration "$SOURCE_CONFIG" \
     --instance-configuration "{\"InstanceRoleArn\":\"$APPRUNNER_INSTANCE_ROLE\"}" \
     --health-check-configuration '{"Protocol":"HTTP","Path":"/health","Interval":10,"Timeout":5,"HealthyThreshold":1,"UnhealthyThreshold":5}' \
-    --region "$REGION" > /dev/null
+    --region "$REGION" \
+    --query "Service.ServiceArn" --output text)
 
-  # Wait for the service to appear then read the URL
-  SERVICE_URL=$(aws "${PROFILE_ARG[@]}" apprunner list-services --region "$REGION" \
-    --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceUrl" \
-    --output text)
+  # Wait for service URL to be available (service enters OPERATION_IN_PROGRESS first)
+  echo "  Waiting for service URL..."
+  for i in $(seq 1 20); do
+    SERVICE_URL=$(aws "${PROFILE_ARG[@]}" apprunner describe-service \
+      --service-arn "$SERVICE_ARN" --region "$REGION" \
+      --query "Service.ServiceUrl" --output text 2>/dev/null || true)
+    [[ -n "$SERVICE_URL" && "$SERVICE_URL" != "None" ]] && break
+    sleep 5
+  done
 fi
 
 echo ""
